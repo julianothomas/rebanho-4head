@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Rebanho — Registro Nelore</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rebanho">
+<meta name="theme-color" content="#33421F">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== TOPBAR ===== -->
+  <div class="topbar" id="topbar">
+    <div>
+      <h1 id="topbar-title">Rebanho</h1>
+      <div class="sub" id="topbar-sub">Registro do plantel</div>
+    </div>
+    <button class="icon-btn hidden" id="btn-back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+  </div>
+
+  <!-- ===== MAIN ===== -->
+  <main id="main"></main>
+
+  <!-- FAB (novo animal) -->
+  <button class="fab hidden" id="fab-add">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+
+  <!-- ===== BOTTOM NAV ===== -->
+  <div class="bottom-nav" id="bottom-nav">
+    <button class="nav-btn" data-view="lista">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>
+      Rebanho
+    </button>
+    <button class="nav-btn" data-view="novo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Novo
+    </button>
+    <button class="nav-btn" data-view="backup">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+      Backup
+    </button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- hidden file input for camera -->
+<input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
+
+<script src="app.js"></script>
+</body>
+</html>
