@@ -44,6 +44,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       Novo
     </button>
+    <button class="nav-btn" data-view="catalogo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l3 3v15H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+      Catálogo
+    </button>
     <button class="nav-btn" data-view="backup">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
       Backup
@@ -56,6 +60,7 @@
 <!-- hidden file input for camera -->
 <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
 
+<script src="jspdf.umd.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

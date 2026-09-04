@@ -1,5 +1,5 @@
 /* ============================================================
-   Rebanho — Registro Nelore
+   Rebanho — Registro de Gado (Corte e Leite)
    App 100% offline: dados ficam salvos no próprio iPhone (IndexedDB).
    ============================================================ */
 
@@ -85,6 +85,13 @@ function fmtDate(d) {
   return `${day}/${m}/${y}`;
 }
 
+function fmtMesAno(d) {
+  if (!d) return '—';
+  const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const dt = new Date(d + 'T00:00:00');
+  return `${meses[dt.getMonth()]} de ${dt.getFullYear()}`;
+}
+
 function idadeStr(dataNasc) {
   if (!dataNasc) return '—';
   const nasc = new Date(dataNasc + 'T00:00:00');
@@ -127,6 +134,12 @@ function calcPrevisaoParto(dataCobertura) {
   return d.toISOString().slice(0, 10);
 }
 
+function ultimoControleLeiteiro(animal) {
+  if (!animal.controleLeiteiro || animal.controleLeiteiro.length === 0) return null;
+  const ord = [...animal.controleLeiteiro].sort((a, b) => a.data.localeCompare(b.data));
+  return ord[ord.length - 1];
+}
+
 function resizeImage(file, maxW = 900, quality = 0.72) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -149,9 +162,11 @@ function resizeImage(file, maxW = 900, quality = 0.72) {
 }
 
 /* ---------------- Constants ---------------- */
-const CATEGORIAS = ['Bezerro', 'Bezerra', 'Novilha', 'Garrote', 'Vaca', 'Touro', 'Boi'];
+const CATEGORIAS = ['Bezerro', 'Bezerra', 'Novilha', 'Novilho', 'Garrote', 'Vaca', 'Touro', 'Boi'];
 const STATUS_COMERCIAL = ['Ativo', 'Vendido', 'Abatido', 'Morto'];
-const STATUS_REPRO = ['Não se aplica', 'Vazia', 'Coberta/Inseminada', 'Prenha', 'Lactante'];
+const STATUS_REPRO = ['Não se aplica', 'Vazia', 'Inseminada (sem prenhez confirmada)', 'Prenhez confirmada', 'Parida'];
+const TIPO_COBERTURA = ['IA (inseminação artificial)', 'Embrião (FIV/TE)', 'Monta natural'];
+const TIPOS_PRODUCAO = ['Corte', 'Leite'];
 
 /* ---------------- App state ---------------- */
 let state = {
@@ -159,9 +174,10 @@ let state = {
   animais: [],
   search: '',
   filtroStatus: '',
-  editing: null,      // objeto sendo criado/editado
-  editingFotos: [],
+  editing: null,
   detalheId: null,
+  catalogoSelecionados: new Set(),
+  catalogoMeta: { titulo: 'Catálogo de Leilão', data: '', contato: '' },
 };
 
 /* ---------------- DOM refs ---------------- */
@@ -190,20 +206,22 @@ function bindGlobalEvents() {
   });
 
   fabAdd.addEventListener('click', startNovo);
-  btnBack.addEventListener('click', () => {
-    if (state.view === 'detalhe' || state.view === 'form') { state.view = 'lista'; render(); }
-    else { state.view = 'lista'; render(); }
-  });
+  btnBack.addEventListener('click', () => { state.view = 'lista'; render(); });
 }
 
 function startNovo() {
   state.editing = {
     id: uid(),
+    tipoProducao: 'Corte',
     nome: '', brinco: '', sexo: 'Fêmea', dataNascimento: '', categoria: 'Bezerra',
+    composicaoRacial: '',
     pai: '', mae: '', plantel: '',
     fazenda: '', lote: '', pastoAtual: '',
+    loteVenda: '', ofertaTipo: 'IND',
     pesagens: [], rendimentoCarcaca: 50, escoreCorporal: '',
-    statusReprodutivo: 'Não se aplica', dataCobertura: '',
+    lactacaoOficial: '', controleLeiteiro: [],
+    statusReprodutivo: 'Não se aplica', tipoCobertura: TIPO_COBERTURA[0], touroOuEmbriao: '',
+    dataCobertura: '', dataParto: '', sexoBezerro: '',
     vacinas: [],
     status: 'Ativo', valorEstimado: '',
     observacoes: '', fotos: [],
@@ -217,7 +235,11 @@ function startNovo() {
 function startEditar(id) {
   const a = state.animais.find(x => x.id === id);
   if (!a) return;
-  state.editing = JSON.parse(JSON.stringify(a));
+  state.editing = Object.assign({
+    tipoProducao: 'Corte', composicaoRacial: '', loteVenda: '', ofertaTipo: 'IND',
+    lactacaoOficial: '', controleLeiteiro: [], tipoCobertura: TIPO_COBERTURA[0],
+    touroOuEmbriao: '', dataParto: '', sexoBezerro: ''
+  }, JSON.parse(JSON.stringify(a)));
   state.editing._isNew = false;
   state.view = 'form';
   render();
@@ -225,7 +247,7 @@ function startEditar(id) {
 
 /* ---------------- Render router ---------------- */
 function render() {
-  btnBack.classList.toggle('hidden', state.view === 'lista' || state.view === 'backup');
+  btnBack.classList.toggle('hidden', state.view === 'lista' || state.view === 'backup' || state.view === 'catalogo');
   fabAdd.classList.toggle('hidden', state.view !== 'lista');
   bottomNav.querySelectorAll('.nav-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.view === state.view || (b.dataset.view === 'novo' && state.view === 'form' && state.editing && state.editing._isNew));
@@ -235,6 +257,7 @@ function render() {
   else if (state.view === 'form') { topbarTitle.textContent = state.editing._isNew ? 'Novo animal' : 'Editar animal'; topbarSub.textContent = state.editing.nome || 'Preencha os dados'; renderForm(); }
   else if (state.view === 'detalhe') { const a = state.animais.find(x => x.id === state.detalheId); topbarTitle.textContent = a ? a.nome || 'Sem nome' : 'Detalhe'; topbarSub.textContent = a && a.brinco ? `Brinco ${a.brinco}` : ''; renderDetalhe(); }
   else if (state.view === 'backup') { topbarTitle.textContent = 'Backup'; topbarSub.textContent = 'Exportar / importar dados'; renderBackup(); }
+  else if (state.view === 'catalogo') { topbarTitle.textContent = 'Catálogo'; topbarSub.textContent = 'Gerar PDF para leilão/venda'; renderCatalogo(); }
 }
 
 /* ---------------- Lista view ---------------- */
@@ -266,9 +289,14 @@ function renderLista() {
       </div>`;
   } else {
     html += lista.map(a => {
+      const foto = a.fotos && a.fotos[0];
+      const isLeite = a.tipoProducao === 'Leite';
       const peso = pesoAtual(a);
       const arrobas = calcArrobas(peso, a.rendimentoCarcaca);
-      const foto = a.fotos && a.fotos[0];
+      const ultCtrl = ultimoControleLeiteiro(a);
+      const metaExtra = isLeite
+        ? (ultCtrl ? `${ultCtrl.litros} L/dia` : (a.lactacaoOficial ? a.lactacaoOficial + ' kg (lact.)' : 'sem controle'))
+        : (peso ? peso + ' kg' : 'sem peso') + (arrobas ? ` · ${arrobas.toFixed(1)} @` : '');
       return `
         <div class="animal-card" data-id="${a.id}">
           ${foto ? `<img class="animal-thumb" src="${foto}">` : `<div class="animal-thumb placeholder">🐄</div>`}
@@ -279,8 +307,7 @@ function renderLista() {
             </div>
             <div class="animal-meta">
               <span>${esc(a.categoria || '—')}</span>
-              <span>${peso ? peso + ' kg' : 'sem peso'}</span>
-              <span>${arrobas ? arrobas.toFixed(1) + ' @' : ''}</span>
+              <span>${metaExtra}</span>
               <span class="status-pill status-${a.status}">${a.status}</span>
             </div>
           </div>
@@ -303,9 +330,11 @@ function escAttr(s) { return esc(s); }
 /* ---------------- Form view (novo/editar) ---------------- */
 function renderForm() {
   const a = state.editing;
+  const isLeite = a.tipoProducao === 'Leite';
   const catOptions = CATEGORIAS.map(c => `<option value="${c}" ${a.categoria === c ? 'selected' : ''}>${c}</option>`).join('');
   const statusOptions = STATUS_COMERCIAL.map(s => `<option value="${s}" ${a.status === s ? 'selected' : ''}>${s}</option>`).join('');
   const reproOptions = STATUS_REPRO.map(s => `<option value="${s}" ${a.statusReprodutivo === s ? 'selected' : ''}>${s}</option>`).join('');
+  const coberturaOptions = TIPO_COBERTURA.map(s => `<option value="${s}" ${a.tipoCobertura === s ? 'selected' : ''}>${s}</option>`).join('');
 
   const fotosHtml = (a.fotos || []).map((f, i) => `
     <div class="photo-thumb-wrap">
@@ -319,6 +348,12 @@ function renderForm() {
       <span class="del" data-del-peso="${p.data}">remover</span>
     </div>`).join('') || `<div style="color:var(--ink-soft);font-size:0.85rem;">Nenhuma pesagem registrada.</div>`;
 
+  const controleHtml = (a.controleLeiteiro || []).slice().sort((x, y) => y.data.localeCompare(x.data)).map((c) => `
+    <div class="list-row" data-data="${c.data}">
+      <span>${fmtDate(c.data)} — ${c.litros} L/dia</span>
+      <span class="del" data-del-controle="${c.data}">remover</span>
+    </div>`).join('') || `<div style="color:var(--ink-soft);font-size:0.85rem;">Nenhum controle leiteiro registrado.</div>`;
+
   const vacinasHtml = (a.vacinas || []).slice().sort((x, y) => y.data.localeCompare(x.data)).map((v, i) => `
     <div class="list-row">
       <span>${fmtDate(v.data)} — ${esc(v.nome)}${v.obs ? ' (' + esc(v.obs) + ')' : ''}</span>
@@ -326,6 +361,14 @@ function renderForm() {
     </div>`).join('') || `<div style="color:var(--ink-soft);font-size:0.85rem;">Nenhuma vacina registrada.</div>`;
 
   mainEl.innerHTML = `
+    <div class="form-section">
+      <h2>Perfil do animal</h2>
+      <div class="segmented" id="segmented-tipo">
+        <button type="button" data-tipo="Corte" class="${!isLeite ? 'active' : ''}">🥩 Corte</button>
+        <button type="button" data-tipo="Leite" class="${isLeite ? 'active' : ''}">🥛 Leite</button>
+      </div>
+    </div>
+
     <div class="form-section">
       <h2>Fotos</h2>
       <div class="photo-picker">
@@ -338,7 +381,7 @@ function renderForm() {
       <h2>Identificação</h2>
       <div class="field"><label>Nome / apelido</label><input id="f-nome" value="${escAttr(a.nome)}" placeholder="Ex: Estrela"></div>
       <div class="field-row">
-        <div class="field"><label>Brinco / registro / RFID</label><input id="f-brinco" value="${escAttr(a.brinco)}" placeholder="Ex: 0231"></div>
+        <div class="field"><label>Brinco / registro / RFID</label><input id="f-brinco" value="${escAttr(a.brinco)}" placeholder="Ex: REM1073"></div>
         <div class="field"><label>Sexo</label>
           <select id="f-sexo">
             <option ${a.sexo === 'Fêmea' ? 'selected' : ''}>Fêmea</option>
@@ -350,6 +393,7 @@ function renderForm() {
         <div class="field"><label>Data de nascimento</label><input type="date" id="f-nascimento" value="${a.dataNascimento || ''}"></div>
         <div class="field"><label>Categoria</label><select id="f-categoria">${catOptions}</select></div>
       </div>
+      <div class="field"><label>Composição racial</label><input id="f-composicao" value="${escAttr(a.composicaoRacial)}" placeholder="Ex: 1/2 HOL + 1/2 GIR"></div>
     </div>
 
     <div class="form-section">
@@ -376,10 +420,34 @@ function renderForm() {
       <div class="field"><label>Escore de condição corporal (1 a 5)</label><input type="number" id="f-escore" min="1" max="5" value="${a.escoreCorporal || ''}"></div>
     </div>
 
+    <div class="form-section ${isLeite ? '' : 'hidden'}" id="section-leite">
+      <h2>Produção leiteira</h2>
+      <div class="field"><label>Lactação oficial (kg de leite)</label><input type="number" id="f-lactacao" value="${a.lactacaoOficial || ''}" placeholder="Ex: 8363" step="1"></div>
+      <div class="field" style="margin-top:4px;"><label>Controle leiteiro mensal</label></div>
+      <div class="add-row-btn">
+        <input type="date" id="f-controle-data" value="${new Date().toISOString().slice(0,10)}">
+        <input type="number" id="f-controle-valor" placeholder="Litros/dia" step="0.1">
+        <button class="btn btn-secondary" style="width:auto;padding:10px 14px;" id="btn-add-controle">Add</button>
+      </div>
+      <div style="margin-top:10px;">${controleHtml}</div>
+    </div>
+
     <div class="form-section">
       <h2>Reprodução</h2>
       <div class="field"><label>Status reprodutivo</label><select id="f-repro">${reproOptions}</select></div>
-      <div class="field"><label>Data da cobertura / IATF</label><input type="date" id="f-cobertura" value="${a.dataCobertura || ''}"></div>
+      <div class="field"><label>Tipo de cobertura</label><select id="f-tipo-cobertura">${coberturaOptions}</select></div>
+      <div class="field"><label>Touro ou embrião utilizado</label><input id="f-touro-embriao" value="${escAttr(a.touroOuEmbriao)}" placeholder="Ex: LLA NEMO 370 CAPELA DAY"></div>
+      <div class="field-row">
+        <div class="field"><label>Data da cobertura / IA / TE</label><input type="date" id="f-cobertura" value="${a.dataCobertura || ''}"></div>
+        <div class="field"><label>Data do parto (se já pariu)</label><input type="date" id="f-parto" value="${a.dataParto || ''}"></div>
+      </div>
+      <div class="field"><label>Sexo do bezerro (se pariu)</label>
+        <select id="f-sexo-bezerro">
+          <option value="" ${!a.sexoBezerro ? 'selected' : ''}>—</option>
+          <option value="Macho" ${a.sexoBezerro === 'Macho' ? 'selected' : ''}>Macho</option>
+          <option value="Fêmea" ${a.sexoBezerro === 'Fêmea' ? 'selected' : ''}>Fêmea</option>
+        </select>
+      </div>
     </div>
 
     <div class="form-section">
@@ -397,9 +465,17 @@ function renderForm() {
       <h2>Localização e manejo</h2>
       <div class="field-row">
         <div class="field"><label>Fazenda</label><input id="f-fazenda" value="${escAttr(a.fazenda)}"></div>
-        <div class="field"><label>Lote</label><input id="f-lote" value="${escAttr(a.lote)}"></div>
+        <div class="field"><label>Lote (pasto/manejo)</label><input id="f-lote" value="${escAttr(a.lote)}"></div>
       </div>
       <div class="field"><label>Pasto atual</label><input id="f-pasto" value="${escAttr(a.pastoAtual)}"></div>
+    </div>
+
+    <div class="form-section">
+      <h2>Lote de venda / leilão</h2>
+      <div class="field-row">
+        <div class="field"><label>Número do lote</label><input id="f-lote-venda" value="${escAttr(a.loteVenda)}" placeholder="Ex: 12"></div>
+        <div class="field"><label>Tipo de oferta</label><input id="f-oferta-tipo" value="${escAttr(a.ofertaTipo)}" placeholder="Ex: IND"></div>
+      </div>
     </div>
 
     <div class="form-section">
@@ -422,6 +498,13 @@ function renderForm() {
   `;
 
   // --- bind form events ---
+  document.getElementById('segmented-tipo').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-tipo]');
+    if (!btn) return;
+    a.tipoProducao = btn.dataset.tipo;
+    renderForm();
+  });
+
   document.getElementById('btn-add-photo').addEventListener('click', () => cameraInput.click());
   cameraInput.onchange = async () => {
     const file = cameraInput.files[0];
@@ -451,6 +534,21 @@ function renderForm() {
   mainEl.querySelectorAll('[data-del-peso]').forEach(el => {
     el.addEventListener('click', () => { a.pesagens = a.pesagens.filter(p => p.data !== el.dataset.delPeso); renderForm(); });
   });
+
+  if (isLeite) {
+    document.getElementById('btn-add-controle').addEventListener('click', () => {
+      const data = document.getElementById('f-controle-data').value;
+      const litros = parseFloat(document.getElementById('f-controle-valor').value);
+      if (!data || !litros) { toast('Informe data e litros.'); return; }
+      a.controleLeiteiro = a.controleLeiteiro || [];
+      a.controleLeiteiro = a.controleLeiteiro.filter(c => c.data !== data);
+      a.controleLeiteiro.push({ data, litros });
+      renderForm();
+    });
+    mainEl.querySelectorAll('[data-del-controle]').forEach(el => {
+      el.addEventListener('click', () => { a.controleLeiteiro = a.controleLeiteiro.filter(c => c.data !== el.dataset.delControle); renderForm(); });
+    });
+  }
 
   document.getElementById('btn-add-vacina').addEventListener('click', () => {
     const data = document.getElementById('f-vacina-data').value;
@@ -482,16 +580,26 @@ function renderForm() {
     a.sexo = document.getElementById('f-sexo').value;
     a.dataNascimento = document.getElementById('f-nascimento').value;
     a.categoria = document.getElementById('f-categoria').value;
+    a.composicaoRacial = document.getElementById('f-composicao').value.trim();
     a.pai = document.getElementById('f-pai').value.trim();
     a.mae = document.getElementById('f-mae').value.trim();
     a.plantel = document.getElementById('f-plantel').value.trim();
     a.rendimentoCarcaca = parseFloat(document.getElementById('f-rendimento').value) || 50;
     a.escoreCorporal = document.getElementById('f-escore').value;
+    if (isLeite) {
+      a.lactacaoOficial = document.getElementById('f-lactacao').value;
+    }
     a.statusReprodutivo = document.getElementById('f-repro').value;
+    a.tipoCobertura = document.getElementById('f-tipo-cobertura').value;
+    a.touroOuEmbriao = document.getElementById('f-touro-embriao').value.trim();
     a.dataCobertura = document.getElementById('f-cobertura').value;
+    a.dataParto = document.getElementById('f-parto').value;
+    a.sexoBezerro = document.getElementById('f-sexo-bezerro').value;
     a.fazenda = document.getElementById('f-fazenda').value.trim();
     a.lote = document.getElementById('f-lote').value.trim();
     a.pastoAtual = document.getElementById('f-pasto').value.trim();
+    a.loteVenda = document.getElementById('f-lote-venda').value.trim();
+    a.ofertaTipo = document.getElementById('f-oferta-tipo').value.trim();
     a.status = document.getElementById('f-status').value;
     a.valorEstimado = document.getElementById('f-valor').value;
     a.observacoes = document.getElementById('f-obs').value.trim();
@@ -513,40 +621,55 @@ function renderDetalhe() {
   const a = state.animais.find(x => x.id === state.detalheId);
   if (!a) { state.view = 'lista'; render(); return; }
 
+  const isLeite = a.tipoProducao === 'Leite';
   const peso = pesoAtual(a);
   const arrobas = calcArrobas(peso, a.rendimentoCarcaca);
   const gmd = calcGMD(a);
   const previsaoParto = calcPrevisaoParto(a.dataCobertura);
   const foto = a.fotos && a.fotos[0];
+  const ultCtrl = ultimoControleLeiteiro(a);
 
   const pesagensHtml = (a.pesagens || []).slice().sort((x, y) => y.data.localeCompare(x.data))
     .map(p => `<div class="kv-row"><span class="k">${fmtDate(p.data)}</span><span class="v">${p.peso} kg</span></div>`).join('')
     || `<div style="color:var(--ink-soft);font-size:0.85rem;">Nenhuma pesagem registrada.</div>`;
 
+  const controleHtml = (a.controleLeiteiro || []).slice().sort((x, y) => y.data.localeCompare(x.data))
+    .map(c => `<div class="kv-row"><span class="k">${fmtDate(c.data)}</span><span class="v">${c.litros} L/dia</span></div>`).join('')
+    || `<div style="color:var(--ink-soft);font-size:0.85rem;">Nenhum controle leiteiro registrado.</div>`;
+
   const vacinasHtml = (a.vacinas || []).slice().sort((x, y) => y.data.localeCompare(x.data))
     .map(v => `<div class="kv-row"><span class="k">${fmtDate(v.data)} — ${esc(v.nome)}</span><span class="v">${esc(v.obs || '')}</span></div>`).join('')
     || `<div style="color:var(--ink-soft);font-size:0.85rem;">Nenhum registro sanitário.</div>`;
+
+  const statBoxes = isLeite ? `
+      <div class="stat-box"><div class="v">${ultCtrl ? ultCtrl.litros + ' L' : '—'}</div><div class="l">Último controle leiteiro</div></div>
+      <div class="stat-box"><div class="v">${a.lactacaoOficial ? a.lactacaoOficial + ' kg' : '—'}</div><div class="l">Lactação oficial</div></div>
+      <div class="stat-box"><div class="v">${idadeStr(a.dataNascimento)}</div><div class="l">Idade</div></div>
+      <div class="stat-box"><div class="v">${esc(a.composicaoRacial || '—')}</div><div class="l">Composição racial</div></div>
+    ` : `
+      <div class="stat-box"><div class="v">${peso ? peso + ' kg' : '—'}</div><div class="l">Peso atual</div></div>
+      <div class="stat-box"><div class="v">${arrobas ? arrobas.toFixed(2) + ' @' : '—'}</div><div class="l">Arrobas estimadas</div></div>
+      <div class="stat-box"><div class="v">${gmd !== null ? gmd.toFixed(2) + ' kg/dia' : '—'}</div><div class="l">GMD (ganho médio diário)</div></div>
+      <div class="stat-box"><div class="v">${idadeStr(a.dataNascimento)}</div><div class="l">Idade</div></div>
+    `;
 
   mainEl.innerHTML = `
     ${foto ? `<img class="detail-hero" src="${foto}">` : `<div class="detail-hero placeholder">🐄</div>`}
     <div class="name-row" style="margin-bottom:2px;">
       <span class="detail-title">${esc(a.nome || 'Sem nome')}</span>
       ${a.brinco ? `<span class="tag-badge" style="margin-left:8px;">${esc(a.brinco)}</span>` : ''}
+      <span class="badge-tipo badge-${a.tipoProducao || 'Corte'}">${a.tipoProducao || 'Corte'}</span>
     </div>
     <span class="status-pill status-${a.status}">${a.status}</span>
 
-    <div class="stat-grid">
-      <div class="stat-box"><div class="v">${peso ? peso + ' kg' : '—'}</div><div class="l">Peso atual</div></div>
-      <div class="stat-box"><div class="v">${arrobas ? arrobas.toFixed(2) + ' @' : '—'}</div><div class="l">Arrobas estimadas</div></div>
-      <div class="stat-box"><div class="v">${gmd !== null ? gmd.toFixed(2) + ' kg/dia' : '—'}</div><div class="l">GMD (ganho médio diário)</div></div>
-      <div class="stat-box"><div class="v">${idadeStr(a.dataNascimento)}</div><div class="l">Idade</div></div>
-    </div>
+    <div class="stat-grid">${statBoxes}</div>
 
     <div class="form-section">
       <h2>Identificação</h2>
       <div class="kv-row"><span class="k">Sexo</span><span class="v">${esc(a.sexo)}</span></div>
       <div class="kv-row"><span class="k">Categoria</span><span class="v">${esc(a.categoria)}</span></div>
       <div class="kv-row"><span class="k">Nascimento</span><span class="v">${fmtDate(a.dataNascimento)}</span></div>
+      ${a.composicaoRacial ? `<div class="kv-row"><span class="k">Composição racial</span><span class="v">${esc(a.composicaoRacial)}</span></div>` : ''}
       ${a.pai ? `<div class="kv-row"><span class="k">Pai</span><span class="v">${esc(a.pai)}</span></div>` : ''}
       ${a.mae ? `<div class="kv-row"><span class="k">Mãe</span><span class="v">${esc(a.mae)}</span></div>` : ''}
       ${a.plantel ? `<div class="kv-row"><span class="k">Linhagem</span><span class="v">${esc(a.plantel)}</span></div>` : ''}
@@ -559,11 +682,21 @@ function renderDetalhe() {
       ${a.escoreCorporal ? `<div class="kv-row"><span class="k">Escore corporal</span><span class="v">${a.escoreCorporal}/5</span></div>` : ''}
     </div>
 
+    ${isLeite ? `
+    <div class="form-section">
+      <h2>Controle leiteiro</h2>
+      ${controleHtml}
+    </div>` : ''}
+
     <div class="form-section">
       <h2>Reprodução</h2>
       <div class="kv-row"><span class="k">Status</span><span class="v">${esc(a.statusReprodutivo || 'Não se aplica')}</span></div>
-      ${a.dataCobertura ? `<div class="kv-row"><span class="k">Cobertura</span><span class="v">${fmtDate(a.dataCobertura)}</span></div>` : ''}
-      ${previsaoParto ? `<div class="kv-row"><span class="k">Previsão de parto</span><span class="v">${fmtDate(previsaoParto)}</span></div>` : ''}
+      ${a.touroOuEmbriao ? `<div class="kv-row"><span class="k">Touro/embrião utilizado</span><span class="v">${esc(a.touroOuEmbriao)}</span></div>` : ''}
+      ${a.tipoCobertura ? `<div class="kv-row"><span class="k">Tipo de cobertura</span><span class="v">${esc(a.tipoCobertura)}</span></div>` : ''}
+      ${a.dataCobertura ? `<div class="kv-row"><span class="k">Data da cobertura</span><span class="v">${fmtDate(a.dataCobertura)}</span></div>` : ''}
+      ${previsaoParto && a.statusReprodutivo !== 'Parida' ? `<div class="kv-row"><span class="k">Previsão de parto</span><span class="v">${fmtDate(previsaoParto)}</span></div>` : ''}
+      ${a.dataParto ? `<div class="kv-row"><span class="k">Data do parto</span><span class="v">${fmtDate(a.dataParto)}</span></div>` : ''}
+      ${a.sexoBezerro ? `<div class="kv-row"><span class="k">Sexo do bezerro</span><span class="v">${esc(a.sexoBezerro)}</span></div>` : ''}
     </div>
 
     <div class="form-section">
@@ -574,9 +707,16 @@ function renderDetalhe() {
     <div class="form-section">
       <h2>Localização</h2>
       <div class="kv-row"><span class="k">Fazenda</span><span class="v">${esc(a.fazenda || '—')}</span></div>
-      <div class="kv-row"><span class="k">Lote</span><span class="v">${esc(a.lote || '—')}</span></div>
+      <div class="kv-row"><span class="k">Lote (manejo)</span><span class="v">${esc(a.lote || '—')}</span></div>
       <div class="kv-row"><span class="k">Pasto atual</span><span class="v">${esc(a.pastoAtual || '—')}</span></div>
     </div>
+
+    ${(a.loteVenda || a.ofertaTipo) ? `
+    <div class="form-section">
+      <h2>Lote de venda / leilão</h2>
+      <div class="kv-row"><span class="k">Número do lote</span><span class="v">${esc(a.loteVenda || '—')}</span></div>
+      <div class="kv-row"><span class="k">Tipo de oferta</span><span class="v">${esc(a.ofertaTipo || '—')}</span></div>
+    </div>` : ''}
 
     ${a.valorEstimado ? `
     <div class="form-section">
@@ -625,11 +765,11 @@ function renderBackup() {
   });
 
   document.getElementById('btn-export-csv').addEventListener('click', () => {
-    const cols = ['nome','brinco','sexo','dataNascimento','categoria','pai','mae','plantel','pesoAtual_kg','arrobas','fazenda','lote','pastoAtual','statusReprodutivo','dataCobertura','status','valorEstimado','observacoes'];
+    const cols = ['tipoProducao','nome','brinco','sexo','dataNascimento','categoria','composicaoRacial','pai','mae','plantel','pesoAtual_kg','arrobas','lactacaoOficial','statusReprodutivo','touroOuEmbriao','dataCobertura','dataParto','fazenda','lote','pastoAtual','loteVenda','ofertaTipo','status','valorEstimado','observacoes'];
     const rows = state.animais.map(a => {
       const peso = pesoAtual(a);
       const arrobas = calcArrobas(peso, a.rendimentoCarcaca);
-      const vals = [a.nome, a.brinco, a.sexo, a.dataNascimento, a.categoria, a.pai, a.mae, a.plantel, peso || '', arrobas ? arrobas.toFixed(2) : '', a.fazenda, a.lote, a.pastoAtual, a.statusReprodutivo, a.dataCobertura, a.status, a.valorEstimado, a.observacoes];
+      const vals = [a.tipoProducao, a.nome, a.brinco, a.sexo, a.dataNascimento, a.categoria, a.composicaoRacial, a.pai, a.mae, a.plantel, peso || '', arrobas ? arrobas.toFixed(2) : '', a.lactacaoOficial, a.statusReprodutivo, a.touroOuEmbriao, a.dataCobertura, a.dataParto, a.fazenda, a.lote, a.pastoAtual, a.loteVenda, a.ofertaTipo, a.status, a.valorEstimado, a.observacoes];
       return vals.map(v => `"${(v ?? '').toString().replace(/"/g,'""')}"`).join(',');
     });
     const csv = [cols.join(','), ...rows].join('\r\n');
@@ -661,6 +801,191 @@ function downloadBlob(blob, filename) {
   link.href = url; link.download = filename;
   document.body.appendChild(link); link.click(); document.body.removeChild(link);
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/* ---------------- Catálogo (PDF) view ---------------- */
+function buildComentario(a) {
+  const partes = [];
+  const composicao = a.composicaoRacial ? ` ${a.composicaoRacial}` : '';
+  let abertura = `${a.categoria || ''}${composicao}`.trim();
+  if (a.pai || a.mae) abertura += `, filho(a) de ${a.pai || '—'} x ${a.mae || '—'}`;
+  partes.push(abertura + '.');
+
+  if (a.tipoProducao === 'Leite') {
+    if (a.lactacaoOficial) partes.push(`Lactação oficial: ${a.lactacaoOficial} kg/leite.`);
+    const ult = ultimoControleLeiteiro(a);
+    if (ult) partes.push(`Último controle leiteiro: ${ult.litros} L/dia (${fmtDate(ult.data)}).`);
+  }
+
+  const previsao = calcPrevisaoParto(a.dataCobertura);
+  if (a.statusReprodutivo === 'Prenhez confirmada') {
+    partes.push(`Prenhez confirmada${a.touroOuEmbriao ? ' do touro/embrião ' + a.touroOuEmbriao : ''}${previsao ? ', com previsão de parto para ' + fmtMesAno(previsao) : ''}.`);
+  } else if (a.statusReprodutivo === 'Inseminada (sem prenhez confirmada)') {
+    partes.push(`Inseminada (sem prenhez confirmada)${a.touroOuEmbriao ? ' do touro ' + a.touroOuEmbriao : ''}${previsao ? ', com previsão de parto para ' + fmtMesAno(previsao) : ''}.${a.dataCobertura ? ' Data da IA: ' + fmtDate(a.dataCobertura) + '.' : ''}`);
+  } else if (a.statusReprodutivo === 'Parida') {
+    partes.push(`Parida${a.sexoBezerro ? ' de ' + a.sexoBezerro.toLowerCase() : ''}${a.dataParto ? ' em ' + fmtDate(a.dataParto) : ''}${a.touroOuEmbriao ? ', do touro ' + a.touroOuEmbriao : ''}.`);
+  }
+
+  if (a.observacoes) partes.push(a.observacoes);
+  return partes.join(' ');
+}
+
+function renderCatalogo() {
+  const lista = state.animais.slice().sort((a, b) => (a.loteVenda || '').localeCompare(b.loteVenda || '', undefined, { numeric: true }));
+
+  if (state.catalogoSelecionados.size === 0 && lista.length > 0 && !state._catalogoTouched) {
+    lista.forEach(a => state.catalogoSelecionados.add(a.id));
+  }
+
+  const rows = lista.map(a => {
+    const foto = a.fotos && a.fotos[0];
+    const checked = state.catalogoSelecionados.has(a.id) ? 'checked' : '';
+    return `
+      <div class="check-row" data-id="${a.id}">
+        <input type="checkbox" ${checked} data-check="${a.id}">
+        ${foto ? `<img class="ct-thumb" src="${foto}">` : `<div class="ct-thumb" style="display:flex;align-items:center;justify-content:center;">🐄</div>`}
+        <div class="ct-info">
+          <div class="n">${a.loteVenda ? 'Lote ' + esc(a.loteVenda) + ' — ' : ''}${esc(a.nome || 'Sem nome')}</div>
+          <div class="m">${esc(a.categoria || '')} · ${a.tipoProducao || 'Corte'}</div>
+        </div>
+      </div>`;
+  }).join('') || `<div class="empty-state"><div class="big">Nenhum animal cadastrado</div><div>Cadastre animais para poder gerar um catálogo.</div></div>`;
+
+  mainEl.innerHTML = `
+    <div class="form-section">
+      <h2>Dados do catálogo</h2>
+      <div class="field"><label>Título</label><input id="cat-titulo" value="${escAttr(state.catalogoMeta.titulo)}"></div>
+      <div class="field"><label>Data / horário do evento</label><input id="cat-data" value="${escAttr(state.catalogoMeta.data)}" placeholder="Ex: 31 de Maio, Domingo 09h"></div>
+      <div class="field"><label>Informações de contato</label><textarea id="cat-contato" placeholder="Ex: João (67) 99999-0000">${esc(state.catalogoMeta.contato)}</textarea></div>
+    </div>
+
+    <div class="form-section">
+      <h2>Animais no catálogo (${state.catalogoSelecionados.size} selecionado(s))</h2>
+      <div class="btn-row" style="margin-bottom:10px;">
+        <button class="btn btn-secondary" id="btn-select-all">Selecionar todos</button>
+        <button class="btn btn-secondary" id="btn-select-none">Limpar seleção</button>
+      </div>
+      ${rows}
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-gerar-pdf">Gerar catálogo em PDF</button>
+    </div>
+  `;
+
+  document.getElementById('cat-titulo').addEventListener('input', (e) => state.catalogoMeta.titulo = e.target.value);
+  document.getElementById('cat-data').addEventListener('input', (e) => state.catalogoMeta.data = e.target.value);
+  document.getElementById('cat-contato').addEventListener('input', (e) => state.catalogoMeta.contato = e.target.value);
+
+  mainEl.querySelectorAll('[data-check]').forEach(chk => {
+    chk.addEventListener('change', () => {
+      state._catalogoTouched = true;
+      const id = chk.dataset.check;
+      if (chk.checked) state.catalogoSelecionados.add(id); else state.catalogoSelecionados.delete(id);
+      const header = mainEl.querySelectorAll('h2')[1];
+      if (header) header.textContent = `Animais no catálogo (${state.catalogoSelecionados.size} selecionado(s))`;
+    });
+  });
+
+  document.getElementById('btn-select-all').addEventListener('click', () => {
+    state._catalogoTouched = true;
+    lista.forEach(a => state.catalogoSelecionados.add(a.id));
+    renderCatalogo();
+  });
+  document.getElementById('btn-select-none').addEventListener('click', () => {
+    state._catalogoTouched = true;
+    state.catalogoSelecionados.clear();
+    renderCatalogo();
+  });
+
+  document.getElementById('btn-gerar-pdf').addEventListener('click', () => gerarCatalogoPDF(lista.filter(a => state.catalogoSelecionados.has(a.id))));
+}
+
+function gerarCatalogoPDF(animais) {
+  if (!window.jspdf) { toast('Biblioteca de PDF não carregou. Tente reabrir o app.'); return; }
+  if (animais.length === 0) { toast('Selecione ao menos um animal.'); return; }
+
+  toast('Gerando PDF…');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 40;
+
+  // ---- Capa ----
+  doc.setFillColor(43, 66, 31);
+  doc.rect(0, 0, pageW, pageH, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(28);
+  doc.text(state.catalogoMeta.titulo || 'Catálogo', pageW / 2, pageH / 2 - 60, { align: 'center' });
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'normal');
+  if (state.catalogoMeta.data) doc.text(state.catalogoMeta.data, pageW / 2, pageH / 2 - 20, { align: 'center' });
+  doc.setFontSize(12);
+  doc.text(`${animais.length} animal(is) neste catálogo`, pageW / 2, pageH / 2 + 10, { align: 'center' });
+  if (state.catalogoMeta.contato) {
+    doc.setFontSize(11);
+    const linhas = doc.splitTextToSize(state.catalogoMeta.contato, pageW - margin * 2);
+    doc.text(linhas, pageW / 2, pageH - 90, { align: 'center' });
+  }
+
+  // ---- Uma página por animal ----
+  animais.forEach((a) => {
+    doc.addPage();
+    let y = margin;
+
+    // cabeçalho do lote
+    doc.setFillColor(51, 66, 31);
+    doc.rect(0, 0, pageW, 46, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    const cabecalho = `LOTE: ${a.loteVenda || '—'}   ${(a.tipoProducao || 'Corte').toUpperCase()}   OFERTA: ${a.ofertaTipo || 'IND'}`;
+    doc.text(cabecalho, margin, 29);
+
+    y = 46 + 26;
+    doc.setTextColor(43, 38, 32);
+
+    // foto
+    const foto = a.fotos && a.fotos[0];
+    const imgW = 170, imgH = 170;
+    if (foto) {
+      try { doc.addImage(foto, 'JPEG', margin, y, imgW, imgH); } catch (e) {}
+    } else {
+      doc.setDrawColor(200, 195, 165);
+      doc.rect(margin, y, imgW, imgH);
+    }
+
+    const textX = margin + imgW + 24;
+    let ty = y + 16;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text(a.nome || 'Sem nome', textX, ty);
+    ty += 18;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    if (a.brinco) { doc.text(`Registro: ${a.brinco}`, textX, ty); ty += 15; }
+    if (a.pai || a.mae) { doc.text(`${a.pai || '—'} x ${a.mae || '—'}`, textX, ty); ty += 15; }
+    doc.text(`${a.categoria || ''}${a.composicaoRacial ? ' ' + a.composicaoRacial : ''}`, textX, ty); ty += 15;
+    doc.text(`NASCIMENTO: ${fmtDate(a.dataNascimento)}`, textX, ty); ty += 15;
+    doc.text(`SEXO: ${a.sexo || '—'}`, textX, ty); ty += 15;
+
+    y = y + imgH + 24;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('COMENTÁRIOS:', margin, y);
+    y += 16;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10.5);
+    const comentario = buildComentario(a);
+    const linhas = doc.splitTextToSize(comentario, pageW - margin * 2);
+    doc.text(linhas, margin, y);
+  });
+
+  const filename = `catalogo-${new Date().toISOString().slice(0,10)}.pdf`;
+  doc.save(filename);
+  toast('Catálogo gerado.');
 }
 
 /* ---------------- Service worker (offline) ---------------- */

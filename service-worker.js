@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rebanho-cache-v1';
+const CACHE_NAME = 'rebanho-cache-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -6,7 +6,8 @@ const ASSETS = [
   './app.js',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './jspdf.umd.min.js'
 ];
 
 self.addEventListener('install', (event) => {

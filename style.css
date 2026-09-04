@@ -80,6 +80,7 @@ body {
   color: var(--pasture-dark);
 }
 .icon-btn:active { background: var(--line); }
+.icon-btn svg { width: 20px; height: 20px; display: block; }
 
 /* ---------- Main scroll area ---------- */
 main {
@@ -240,6 +241,7 @@ main {
   .fab { right: 20px; }
 }
 .fab:active { background: var(--brick-dark); }
+.fab svg { width: 24px; height: 24px; display: block; }
 
 /* ---------- Forms ---------- */
 .form-section {
@@ -452,5 +454,60 @@ main {
   text-align: center;
 }
 #toast.show { opacity: 1; }
+
+/* ---------- Segmented control (perfil Corte/Leite) ---------- */
+.segmented {
+  display: flex;
+  background: #E4DCC5;
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 4px;
+}
+.segmented button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 9px 6px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.segmented button.active {
+  background: var(--pasture);
+  color: #fff;
+}
+
+/* ---------- Catalog selection checkboxes ---------- */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.check-row:last-child { border-bottom: none; }
+.check-row input[type="checkbox"] {
+  width: 20px; height: 20px; flex-shrink: 0;
+  accent-color: var(--pasture);
+}
+.check-row .ct-thumb {
+  width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: var(--line); flex-shrink: 0;
+}
+.check-row .ct-info { flex: 1; min-width: 0; font-size: 0.88rem; }
+.check-row .ct-info .n { font-weight: 700; color: var(--pasture-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.check-row .ct-info .m { color: var(--ink-soft); font-size: 0.78rem; }
+
+.badge-tipo {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  margin-left: 6px;
+  text-transform: uppercase;
+}
+.badge-Corte { background: #E9D3CB; color: var(--brick-dark); }
+.badge-Leite { background: #DCE7CE; color: var(--pasture-dark); }
 
 .hidden { display: none !important; }

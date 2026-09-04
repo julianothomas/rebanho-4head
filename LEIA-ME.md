@@ -33,20 +33,27 @@ Se preferir outra forma de hospedar (Netlify, servidor próprio do escritório, 
 
 ## O que o app registra por animal
 
-- **Identificação:** nome, brinco/registro, sexo, data de nascimento, categoria
+- **Perfil:** Corte ou Leite — muda quais campos aparecem no formulário
+- **Identificação:** nome, brinco/registro, sexo, data de nascimento, categoria, composição racial
 - **Genealogia:** pai, mãe, linhagem/plantel
 - **Peso e arroba:** histórico de pesagens, cálculo automático de arrobas (peso × rendimento de carcaça ÷ 30) e do GMD (ganho médio diário)
-- **Reprodução:** status reprodutivo, data de cobertura, previsão de parto (calculada automaticamente)
+- **Produção leiteira** (perfil Leite): lactação oficial (kg) e controle leiteiro mensal (data + litros/dia)
+- **Reprodução:** status (vazia / inseminada / prenhez confirmada / parida), tipo de cobertura (IA / embrião / monta natural), touro ou embrião utilizado, data da cobertura, previsão de parto (calculada automaticamente), data do parto e sexo do bezerro
 - **Sanidade:** vacinas e tratamentos com data
-- **Localização:** fazenda, lote, pasto atual
+- **Localização:** fazenda, lote de manejo, pasto atual
+- **Lote de venda/leilão:** número do lote e tipo de oferta
 - **Comercial:** status (ativo/vendido/abatido/morto), valor estimado
 - **Fotos** (quantas quiser por animal) e observações livres
+
+## Gerando um catálogo em PDF
+
+Na aba **Catálogo**, escolha quais animais entram (por padrão, todos), preencha o título/data/contato do evento e toque em "Gerar catálogo em PDF". O app monta uma capa e uma página por animal, com foto, dados e um texto de comentários gerado automaticamente a partir do que você cadastrou (composição racial, lactação, reprodução etc.). O PDF é baixado direto no iPhone, funcionando também offline.
 
 ## Próximos passos possíveis
 
 - Sincronização entre vários celulares (precisaria de um servidor central)
 - Login com senha para proteger os dados
-- Gráfico de evolução de peso por animal
-- Exportar relatório em PDF por animal
+- Gráfico de evolução de peso ou de produção leiteira por animal
+- Organizar o catálogo por lotes de leilão específicos (aguardando informações do modelo do Instagram)
 
 Se quiser qualquer um desses, é só pedir.
